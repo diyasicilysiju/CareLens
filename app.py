@@ -10,13 +10,29 @@ from datetime import datetime
 # ---------------------------
 # 🔹 Firebase Configuration
 # ---------------------------
-FIREBASE_BUCKET = "medical-classifier.firebasestorage.app"
-cred = credentials.Certificate("firebase_key.json")
+# ---------------------------
+# 🔹 Firebase Configuration for Streamlit Cloud
+# ---------------------------
+import json
+from firebase_admin import credentials, storage
 
-if not firebase_admin._apps:
-    firebase_admin.initialize_app(cred, {"storageBucket": FIREBASE_BUCKET})
+try:
+    firebase_config = json.loads(st.secrets["FIREBASE_KEY"])
+    cred = credentials.Certificate(firebase_config)
 
-bucket = storage.bucket()
+    if not firebase_admin._apps:
+        firebase_admin.initialize_app(cred, {
+            "storageBucket": "medical-classifier.firebasestorage.app"
+        })
+
+    bucket = storage.bucket()
+    st.sidebar.success("✅ Connected to Firebase Storage")
+
+except Exception as e:
+    st.sidebar.error("⚠️ Firebase connection failed.")
+    st.sidebar.write(str(e))
+    bucket = None
+
 
 # ---------------------------
 # 🎨 Streamlit Page Config
