@@ -1,0 +1,25 @@
+# 🔒 Sensitive files
+firebase_key.json
+
+# 🧠 Model files
+*.pth
+*.pt
+
+# 🐍 Python cache
+__pycache__/
+*.pyc
+*.pyo
+
+# 📦 Virtual environments
+venv/
+env/
+.venv/
+
+# 🧾 Logs and temp files
+*.log
+*.tmp
+tempfile*
+.DS_Store
+
+# Streamlit cache
+.streamlit/

@@ -1,0 +1,6 @@
+streamlit
+firebase-admin
+torch
+torchvision
+Pillow
+numpy
