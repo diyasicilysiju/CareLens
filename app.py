@@ -7,84 +7,68 @@ import firebase_admin
 from firebase_admin import credentials, storage, firestore
 from datetime import datetime
 import json
+import pyrebase
 
 # ---------------------------
-# 🔹 Streamlit Page Config
+# 🌩 Firebase Config
 # ---------------------------
-st.set_page_config(page_title="CareLens - X-ray Classifier", page_icon="🩺", layout="centered")
+firebase_config = json.loads(st.secrets["FIREBASE_KEY"])
+
+# Pyrebase (for Auth)
+firebase = pyrebase.initialize_app({
+    "apiKey": firebase_config["apiKey"],
+    "authDomain": firebase_config["project_id"] + ".firebaseapp.com",
+    "projectId": firebase_config["project_id"],
+    "storageBucket": firebase_config["project_id"] + ".appspot.com",
+    "messagingSenderId": firebase_config["messagingSenderId"],
+    "appId": firebase_config["appId"],
+    "databaseURL": ""
+})
+auth = firebase.auth()
+
+# Firebase Admin (for Firestore + Storage)
+cred = credentials.Certificate(firebase_config)
+if not firebase_admin._apps:
+    firebase_admin.initialize_app(cred, {
+        "storageBucket": firebase_config["project_id"] + ".appspot.com"
+    })
+bucket = storage.bucket()
+db = firestore.client()
 
 # ---------------------------
-# 🎨 Custom Styling
+# 🎨 Streamlit Page Setup
 # ---------------------------
-st.markdown("""
-    <style>
-        h1 {
-            color: #004d99;
-            text-align: center;
-            font-family: 'Helvetica Neue', sans-serif;
-        }
-        .subtitle {
-            text-align: center;
-            color: #555;
-            margin-bottom: 2rem;
-            font-size: 1rem;
-        }
-        .result {
-            text-align: center;
-            background-color: #f0f7ff;
-            border-radius: 10px;
-            padding: 20px;
-            margin-top: 20px;
-            border: 1px solid #cce0ff;
-        }
-        .footer {
-            text-align: center;
-            margin-top: 3rem;
-            color: #777;
-            font-size: 0.9em;
-        }
-        .stButton>button {
-            background-color: #007acc;
-            color: white;
-            border-radius: 6px;
-            padding: 0.5em 1.5em;
-        }
-        .stButton>button:hover {
-            background-color: #005fa3;
-        }
-    </style>
-""", unsafe_allow_html=True)
+st.set_page_config(page_title="CareLens", page_icon="🩺", layout="centered")
 
 # ---------------------------
-# 🩺 Header
+# 🔐 Login / Signup
 # ---------------------------
-st.markdown("<h1>CARELENS</h1>", unsafe_allow_html=True)
-st.markdown('<div class="subtitle">AI-assisted chest X-ray analysis — simple, accurate, and human</div>', unsafe_allow_html=True)
+def login_page():
+    st.title("🔐 CareLens Login")
+    email = st.text_input("Email")
+    password = st.text_input("Password", type="password")
+    if st.button("Login"):
+        try:
+            user = auth.sign_in_with_email_and_password(email, password)
+            st.session_state["user_email"] = email
+            st.success("✅ Login successful!")
+            st.experimental_rerun()
+        except Exception as e:
+            st.error("❌ Invalid credentials or user not found.")
+
+def signup_page():
+    st.title("🩺 Create an Account")
+    email = st.text_input("Email")
+    password = st.text_input("Password", type="password")
+    if st.button("Sign Up"):
+        try:
+            auth.create_user_with_email_and_password(email, password)
+            st.success("🎉 Account created! You can log in now.")
+        except Exception as e:
+            st.error("⚠️ Error creating account.")
 
 # ---------------------------
-# 🔹 Firebase Configuration (using Streamlit Secrets)
-# ---------------------------
-try:
-    firebase_config = json.loads(st.secrets["FIREBASE_KEY"])
-    cred = credentials.Certificate(firebase_config)
-
-    if not firebase_admin._apps:
-        firebase_admin.initialize_app(cred, {
-            "storageBucket": "medical-classifier.firebasestorage.app"
-        })
-
-    bucket = storage.bucket()
-    db = firestore.client()
-    st.sidebar.success("✅ Connected to Firebase")
-
-except Exception as e:
-    st.sidebar.error("⚠️ Firebase connection failed.")
-    st.sidebar.write(str(e))
-    bucket = None
-    db = None
-
-# ---------------------------
-# 🔹 Model Loading
+# 🧠 Load Model
 # ---------------------------
 @st.cache_resource
 def load_model():
@@ -92,112 +76,84 @@ def load_model():
         model = models.resnet18(pretrained=False)
         num_features = model.fc.in_features
         model.fc = torch.nn.Linear(num_features, 2)
-
-        if bucket:
-            blob = bucket.blob("model/model1.pth")
-            with tempfile.NamedTemporaryFile(delete=False) as temp_model_file:
-                blob.download_to_filename(temp_model_file.name)
-                model_path = temp_model_file.name
-        else:
-            st.error("❌ Firebase bucket not available.")
-            return None
-
-        model.load_state_dict(torch.load(model_path, map_location=torch.device("cpu")))
+        blob = bucket.blob("model/model1.pth")
+        with tempfile.NamedTemporaryFile(delete=False) as temp_model_file:
+            blob.download_to_filename(temp_model_file.name)
+            model.load_state_dict(torch.load(temp_model_file.name, map_location=torch.device("cpu")))
         model.eval()
         return model
-
     except Exception as e:
         st.error(f"⚠️ Failed to load model: {e}")
         return None
 
+# ---------------------------
+# 🩻 Main App
+# ---------------------------
+def main_app():
+    st.markdown("<h1 style='text-align:center;color:#004d99;'>CARELENS</h1>", unsafe_allow_html=True)
+    st.markdown("<p style='text-align:center;'>AI-assisted chest X-ray analysis — simple, accurate, and human.</p>", unsafe_allow_html=True)
 
-model = load_model()
+    model = load_model()
+
+    uploaded_file = st.file_uploader("📤 Upload Chest X-ray Image", type=["jpg", "jpeg", "png"])
+    if uploaded_file:
+        image = Image.open(uploaded_file).convert("RGB")
+        st.image(image, caption="Preview", use_container_width=True)
+
+        if st.button("Analyze Image 🧠"):
+            if model:
+                transform = transforms.Compose([
+                    transforms.Resize((224, 224)),
+                    transforms.ToTensor(),
+                    transforms.Normalize([0.485, 0.456, 0.406],
+                                         [0.229, 0.224, 0.225])
+                ])
+                img_tensor = transform(image).unsqueeze(0)
+                with torch.no_grad():
+                    output = model(img_tensor)
+                    _, pred = torch.max(output, 1)
+                label = "Normal" if pred.item() == 0 else "Pneumonia"
+                color = "#007acc" if label == "Normal" else "#e53935"
+
+                st.markdown(f"""
+                    <div style='text-align:center;background:#f0f7ff;padding:20px;border-radius:10px;margin-top:20px;'>
+                        <h3>Result</h3>
+                        <h2 style='color:{color};'>{label}</h2>
+                        <p>Analyzed on: {datetime.now().strftime("%d %b %Y, %I:%M %p")}</p>
+                    </div>
+                """, unsafe_allow_html=True)
+
+                # Save prediction to Firestore
+                db.collection("predictions").add({
+                    "email": st.session_state["user_email"],
+                    "filename": uploaded_file.name,
+                    "prediction": label,
+                    "timestamp": datetime.now()
+                })
+
+                # Upload image to Storage
+                blob = bucket.blob(f"user_uploads/{uploaded_file.name}")
+                uploaded_file.seek(0)
+                blob.upload_from_file(uploaded_file, content_type=uploaded_file.type)
+                st.success("✅ Image and prediction logged successfully!")
 
 # ---------------------------
-# 🩻 Upload + Predict
+# 🚪 Logout
 # ---------------------------
-uploaded_file = st.file_uploader("📤 Upload Chest X-ray Image", type=["jpg", "jpeg", "png"])
-
-if uploaded_file is not None:
-    image = Image.open(uploaded_file).convert("RGB")
-    st.image(image, caption="Preview", use_container_width=True)
-
-    if st.button("Analyze Image 🧠"):
-        if model is None:
-            st.error("❌ Model not loaded. Please check your Firebase model path.")
-        else:
-            transform = transforms.Compose([
-                transforms.Resize((224, 224)),
-                transforms.ToTensor(),
-                transforms.Normalize([0.485, 0.456, 0.406],
-                                     [0.229, 0.224, 0.225])
-            ])
-
-            img_tensor = transform(image).unsqueeze(0)
-
-            with torch.no_grad():
-                output = model(img_tensor)
-                _, pred = torch.max(output, 1)
-
-            label = "Normal" if pred.item() == 0 else "Pneumonia"
-            color = "#007acc" if label == "Normal" else "#e53935"
-
-            st.markdown(f"""
-                <div class="result">
-                    <h3>Result</h3>
-                    <h2 style="color:{color};">{label}</h2>
-                    <p>Analyzed on: {datetime.now().strftime("%d %b %Y, %I:%M %p")}</p>
-                </div>
-            """, unsafe_allow_html=True)
-
-            # ---------------------------
-            # ☁️ Upload Image to Firebase + Save Prediction to Firestore
-            # ---------------------------
-            if bucket and db:
-                try:
-                    # Upload image to Cloud Storage
-                    blob_path = f"user_uploads/{uploaded_file.name}"
-                    blob = bucket.blob(blob_path)
-                    uploaded_file.seek(0)
-                    blob.upload_from_file(uploaded_file, content_type=uploaded_file.type)
-                    image_url = blob.public_url
-
-                    st.success("✅ Image securely saved to cloud storage.")
-
-                    # Save prediction details to Firestore
-                    doc_ref = db.collection("predictions").document()
-                    doc_ref.set({
-                        "file_name": uploaded_file.name,
-                        "label": label,
-                        "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                        "image_url": image_url
-                    })
-
-                    st.success("✅ Prediction record added to Firestore database.")
-
-                except Exception as e:
-                    st.error(f"⚠️ Upload or database save failed: {e}")
+def logout():
+    if st.sidebar.button("Logout"):
+        st.session_state.clear()
+        st.experimental_rerun()
 
 # ---------------------------
-# 📜 Show Recent Predictions
+# 🧭 Navigation
 # ---------------------------
-st.subheader("📜 Recent Predictions")
-
-if db:
-    try:
-        predictions = db.collection("predictions").order_by("timestamp", direction=firestore.Query.DESCENDING).limit(5).stream()
-        for pred in predictions:
-            data = pred.to_dict()
-            with st.container():
-                st.write(f"**🩻 {data['file_name']}** — *{data['label']}* ({data['timestamp']})")
-                if 'image_url' in data:
-                    st.image(data['image_url'], width=150)
-    except Exception as e:
-        st.warning("⚠️ Could not load prediction history.")
+if "user_email" not in st.session_state:
+    page = st.sidebar.radio("Welcome to CareLens", ["Login", "Sign Up"])
+    if page == "Login":
+        login_page()
+    else:
+        signup_page()
 else:
-    st.info("🔒 Firestore not connected — history unavailable.")
-
-# ---------------------------
-# ⚕️ Footer
-# ---------------------------
-st.markdown('<div class="footer">© 2025 CareLens • Empowering medical clarity through AI</div>', unsafe_allow_html=True)
+    logout()
+    main_app()
