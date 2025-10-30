@@ -78,7 +78,7 @@ try:
     st.sidebar.success("✅ Connected to Firebase")
 
 except Exception as e:
-    st.sidebar.error("⚠️ Firebase connection failed.")
+    st.sidebar.error("⚠ Firebase connection failed.")
     st.sidebar.write(str(e))
     bucket = None
     db = None
@@ -107,7 +107,7 @@ def load_model():
         return model
 
     except Exception as e:
-        st.error(f"⚠️ Failed to load model: {e}")
+        st.error(f"⚠ Failed to load model: {e}")
         return None
 
 
@@ -151,7 +151,7 @@ if uploaded_file is not None:
             """, unsafe_allow_html=True)
 
             # ---------------------------
-            # ☁️ Upload Image to Firebase + Save Prediction to Firestore
+            # ☁ Upload Image to Firebase + Save Prediction to Firestore
             # ---------------------------
             if bucket and db:
                 try:
@@ -176,7 +176,7 @@ if uploaded_file is not None:
                     st.success("✅ Prediction record added to Firestore database.")
 
                 except Exception as e:
-                    st.error(f"⚠️ Upload or database save failed: {e}")
+                    st.error(f"⚠ Upload or database save failed: {e}")
 
 # ---------------------------
 # 📜 Show Recent Predictions
@@ -189,15 +189,15 @@ if db:
         for pred in predictions:
             data = pred.to_dict()
             with st.container():
-                st.write(f"**🩻 {data['file_name']}** — *{data['label']}* ({data['timestamp']})")
+                st.write(f"🩻 {data['file_name']}** — {data['label']} ({data['timestamp']})")
                 if 'image_url' in data:
                     st.image(data['image_url'], width=150)
     except Exception as e:
-        st.warning("⚠️ Could not load prediction history.")
+        st.warning("⚠ Could not load prediction history.")
 else:
     st.info("🔒 Firestore not connected — history unavailable.")
 
 # ---------------------------
-# ⚕️ Footer
+# ⚕ Footer
 # ---------------------------
 st.markdown('<div class="footer">© 2025 CareLens • Empowering medical clarity through AI</div>', unsafe_allow_html=True)
