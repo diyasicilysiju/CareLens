@@ -1,10 +1,4 @@
 import streamlit as st
-import pyrebase
-
-# Directly use FIREBASE_KEY from secrets
-firebase_config = st.secrets["FIREBASE_KEY"]
-
-# Initialize Firebaseimport streamlit as st
 import torch
 from torchvision import models, transforms
 from PIL import Image
@@ -17,25 +11,27 @@ import pyrebase
 # ---------------------------
 # 🌩 Firebase Config
 # ---------------------------
-firebase_config = st.secrets["FIREBASE_KEY"]
+
+firebase_web = st.secrets["FIREBASE_WEB"]
+firebase_admin_config = st.secrets["FIREBASE_ADMIN"]
 
 # Pyrebase (for Auth)
 firebase = pyrebase.initialize_app({
-    "apiKey": firebase_config["apiKey"],
-    "authDomain": firebase_config["project_id"] + ".firebaseapp.com",
-    "projectId": firebase_config["project_id"],
-    "storageBucket": firebase_config["project_id"] + ".appspot.com",
-    "messagingSenderId": firebase_config["messagingSenderId"],
-    "appId": firebase_config["appId"],
+    "apiKey": firebase_web["apiKey"],
+    "authDomain": firebase_web["authDomain"],
+    "projectId": firebase_web["project_id"],
+    "storageBucket": firebase_web["storageBucket"],
+    "messagingSenderId": firebase_web["messagingSenderId"],
+    "appId": firebase_web["appId"],
     "databaseURL": ""
 })
 auth = firebase.auth()
 
 # Firebase Admin (for Firestore + Storage)
-cred = credentials.Certificate(dict(firebase_config))
+cred = credentials.Certificate(dict(firebase_admin_config))
 if not firebase_admin._apps:
     firebase_admin.initialize_app(cred, {
-        "storageBucket": firebase_config["project_id"] + ".appspot.com"
+        "storageBucket": firebase_web["storageBucket"]
     })
 bucket = storage.bucket()
 db = firestore.client()
@@ -52,7 +48,6 @@ def login_page():
     st.title("🔐 CareLens Login")
     email = st.text_input("Email")
     password = st.text_input("Password", type="password")
-
     if st.button("Login"):
         try:
             user = auth.sign_in_with_email_and_password(email, password)
@@ -66,7 +61,6 @@ def signup_page():
     st.title("🩺 Create an Account")
     email = st.text_input("Email")
     password = st.text_input("Password", type="password")
-
     if st.button("Sign Up"):
         try:
             auth.create_user_with_email_and_password(email, password)
@@ -103,8 +97,8 @@ def main_app():
     st.markdown("<p style='text-align:center;'>AI-assisted chest X-ray analysis — simple, accurate, and human.</p>", unsafe_allow_html=True)
 
     model = load_model()
-
     uploaded_file = st.file_uploader("📤 Upload Chest X-ray Image", type=["jpg", "jpeg", "png"])
+
     if uploaded_file:
         image = Image.open(uploaded_file).convert("RGB")
         st.image(image, caption="Preview", use_container_width=True)
@@ -169,18 +163,3 @@ if "user_email" not in st.session_state:
 else:
     logout()
     main_app()
-
-firebase = pyrebase.initialize_app(firebase_config)
-auth = firebase.auth()
-
-st.title("Firebase Login")
-
-email = st.text_input("Email")
-password = st.text_input("Password", type="password")
-
-if st.button("Login"):
-    try:
-        user = auth.sign_in_with_email_and_password(email, password)
-        st.success("Login successful!")
-    except Exception as e:
-        st.error(f"Error: {e}")
