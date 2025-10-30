@@ -5,7 +5,7 @@ from PIL import Image
 import tempfile
 import firebase_admin
 from firebase_admin import credentials, storage, firestore
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 import json
 
 # ---------------------------
@@ -142,20 +142,24 @@ if uploaded_file is not None:
             label = "Normal" if pred.item() == 0 else "Pneumonia"
             color = "#007acc" if label == "Normal" else "#e53935"
 
+            # ⏰ Time in IST
+            IST = timezone(timedelta(hours=5, minutes=30))
+            time_now = datetime.now(IST)
+
             st.markdown(f"""
                 <div class="result">
                     <h3>Result</h3>
                     <h2 style="color:{color};">{label}</h2>
-                    <p>Analyzed on: {datetime.now().strftime("%d %b %Y, %I:%M %p")}</p>
+                    <p>Analyzed on: {time_now.strftime("%d %b %Y, %I:%M %p")}</p>
                 </div>
             """, unsafe_allow_html=True)
 
             # ---------------------------
-            # ☁ Upload Image to Firebase + Save Prediction to Firestore
+            # ☁ Upload Image + Save Prediction
             # ---------------------------
             if bucket and db:
                 try:
-                    # Upload image to Cloud Storage
+                    # Upload to Cloud Storage
                     blob_path = f"user_uploads/{uploaded_file.name}"
                     blob = bucket.blob(blob_path)
                     uploaded_file.seek(0)
@@ -164,12 +168,12 @@ if uploaded_file is not None:
 
                     st.success("✅ Image securely saved to cloud storage.")
 
-                    # Save prediction details to Firestore
+                    # Save to Firestore with IST timestamp
                     doc_ref = db.collection("predictions").document()
                     doc_ref.set({
                         "file_name": uploaded_file.name,
                         "label": label,
-                        "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                        "timestamp": time_now.strftime("%Y-%m-%d %H:%M:%S"),
                         "image_url": image_url
                     })
 
@@ -186,14 +190,20 @@ st.subheader("📜 Recent Predictions")
 if db:
     try:
         predictions = db.collection("predictions").order_by("timestamp", direction=firestore.Query.DESCENDING).limit(5).stream()
+        IST = timezone(timedelta(hours=5, minutes=30))
         for pred in predictions:
             data = pred.to_dict()
+            # Convert UTC timestamp string to IST datetime
+            try:
+                dt = datetime.strptime(data["timestamp"], "%Y-%m-%d %H:%M:%S").replace(tzinfo=IST)
+            except:
+                dt = datetime.now(IST)
             with st.container():
-                st.write(f"🩻 {data['file_name']}** — {data['label']} ({data['timestamp']})")
+                st.write(f"🩻 {data['file_name']} — {data['label']} ({dt.strftime('%d %b %Y, %I:%M %p')})")
                 if 'image_url' in data:
                     st.image(data['image_url'], width=150)
     except Exception as e:
-        st.warning("⚠ Could not load prediction history.")
+        st.warning(f"⚠ Could not load prediction history: {e}")
 else:
     st.info("🔒 Firestore not connected — history unavailable.")
 
