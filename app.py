@@ -6,33 +6,35 @@ import tempfile
 import firebase_admin
 from firebase_admin import credentials, storage, firestore
 from datetime import datetime
+import json
 import pyrebase
 
 # ---------------------------
 # 🌩 Firebase Config
 # ---------------------------
 
-firebase_web = st.secrets["FIREBASE_WEB"]
-firebase_admin_config = st.secrets["FIREBASE_ADMIN"]
+firebase_config = json.loads(st.secrets["FIREBASE_KEY"])
+firebase_admin_config = dict(st.secrets["FIREBASE_ADMIN"])
 
 # Pyrebase (for Auth)
 firebase = pyrebase.initialize_app({
-    "apiKey": firebase_web["apiKey"],
-    "authDomain": firebase_web["authDomain"],
-    "projectId": firebase_web["project_id"],
-    "storageBucket": firebase_web["storageBucket"],
-    "messagingSenderId": firebase_web["messagingSenderId"],
-    "appId": firebase_web["appId"],
-    "databaseURL": ""
+    "apiKey": firebase_config["apiKey"],
+    "authDomain": firebase_config["authDomain"],
+    "projectId": firebase_config["project_id"],
+    "storageBucket": firebase_config["storageBucket"],
+    "messagingSenderId": firebase_config["messagingSenderId"],
+    "appId": firebase_config["appId"],
 })
+
 auth = firebase.auth()
 
 # Firebase Admin (for Firestore + Storage)
-cred = credentials.Certificate(dict(firebase_admin_config))
+cred = credentials.Certificate(firebase_admin_config)
 if not firebase_admin._apps:
     firebase_admin.initialize_app(cred, {
-        "storageBucket": firebase_web["storageBucket"]
+        "storageBucket": firebase_admin_config["project_id"] + ".appspot.com"
     })
+
 bucket = storage.bucket()
 db = firestore.client()
 
@@ -48,24 +50,27 @@ def login_page():
     st.title("🔐 CareLens Login")
     email = st.text_input("Email")
     password = st.text_input("Password", type="password")
+
     if st.button("Login"):
         try:
             user = auth.sign_in_with_email_and_password(email, password)
             st.session_state["user_email"] = email
             st.success("✅ Login successful!")
             st.experimental_rerun()
-        except Exception:
+        except Exception as e:
             st.error("❌ Invalid credentials or user not found.")
+
 
 def signup_page():
     st.title("🩺 Create an Account")
     email = st.text_input("Email")
     password = st.text_input("Password", type="password")
+
     if st.button("Sign Up"):
         try:
             auth.create_user_with_email_and_password(email, password)
             st.success("🎉 Account created! You can log in now.")
-        except Exception:
+        except Exception as e:
             st.error("⚠ Error creating account.")
 
 # ---------------------------
@@ -81,8 +86,7 @@ def load_model():
         blob = bucket.blob("model/model1.pth")
         with tempfile.NamedTemporaryFile(delete=False) as temp_model_file:
             blob.download_to_filename(temp_model_file.name)
-            model.load_state_dict(torch.load(temp_model_file.name, map_location=torch.device("cpu")))
-
+        model.load_state_dict(torch.load(temp_model_file.name, map_location=torch.device("cpu")))
         model.eval()
         return model
     except Exception as e:
@@ -111,15 +115,14 @@ def main_app():
                     transforms.Normalize([0.485, 0.456, 0.406],
                                          [0.229, 0.224, 0.225])
                 ])
-                img_tensor = transform(image).unsqueeze(0)
 
+                img_tensor = transform(image).unsqueeze(0)
                 with torch.no_grad():
                     output = model(img_tensor)
                     _, pred = torch.max(output, 1)
+                    label = "Normal" if pred.item() == 0 else "Pneumonia"
 
-                label = "Normal" if pred.item() == 0 else "Pneumonia"
                 color = "#007acc" if label == "Normal" else "#e53935"
-
                 st.markdown(f"""
                     <div style='text-align:center;background:#f0f7ff;padding:20px;border-radius:10px;margin-top:20px;'>
                         <h3>Result</h3>
