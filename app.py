@@ -6,33 +6,32 @@ import tempfile
 import firebase_admin
 from firebase_admin import credentials, storage, firestore
 from datetime import datetime
+import json
 import pyrebase
 
 # ---------------------------
 # 🌩 Firebase Config
 # ---------------------------
-firebase_config = st.secrets["FIREBASE_KEY"]  # ✅ No json.loads()
+firebase_config = json.loads(st.secrets["FIREBASE_KEY"])
 
-# ✅ Pyrebase (for Auth)
+# Pyrebase (for Auth)
 firebase = pyrebase.initialize_app({
     "apiKey": firebase_config["apiKey"],
-    "authDomain": firebase_config["authDomain"],
+    "authDomain": firebase_config["project_id"] + ".firebaseapp.com",
     "projectId": firebase_config["project_id"],
-    "storageBucket": firebase_config["storageBucket"],
+    "storageBucket": firebase_config["project_id"] + ".appspot.com",
     "messagingSenderId": firebase_config["messagingSenderId"],
     "appId": firebase_config["appId"],
     "databaseURL": ""
 })
 auth = firebase.auth()
 
-# ✅ Firebase Admin (for Firestore + Storage)
-# Since we don’t have a serviceAccountKey.json, use app default
+# Firebase Admin (for Firestore + Storage)
+cred = credentials.Certificate(firebase_config)
 if not firebase_admin._apps:
-    cred = credentials.ApplicationDefault()
     firebase_admin.initialize_app(cred, {
-        "storageBucket": firebase_config["storageBucket"]
+        "storageBucket": firebase_config["project_id"] + ".appspot.com"
     })
-
 bucket = storage.bucket()
 db = firestore.client()
 
@@ -53,7 +52,7 @@ def login_page():
             user = auth.sign_in_with_email_and_password(email, password)
             st.session_state["user_email"] = email
             st.success("✅ Login successful!")
-            st.rerun()
+            st.experimental_rerun()
         except Exception as e:
             st.error("❌ Invalid credentials or user not found.")
 
@@ -66,7 +65,7 @@ def signup_page():
             auth.create_user_with_email_and_password(email, password)
             st.success("🎉 Account created! You can log in now.")
         except Exception as e:
-            st.error(f"⚠️ Error creating account: {e}")
+            st.error("⚠ Error creating account.")
 
 # ---------------------------
 # 🧠 Load Model
@@ -77,16 +76,14 @@ def load_model():
         model = models.resnet18(pretrained=False)
         num_features = model.fc.in_features
         model.fc = torch.nn.Linear(num_features, 2)
-
         blob = bucket.blob("model/model1.pth")
         with tempfile.NamedTemporaryFile(delete=False) as temp_model_file:
             blob.download_to_filename(temp_model_file.name)
             model.load_state_dict(torch.load(temp_model_file.name, map_location=torch.device("cpu")))
-
         model.eval()
         return model
     except Exception as e:
-        st.error(f"⚠️ Failed to load model: {e}")
+        st.error(f"⚠ Failed to load model: {e}")
         return None
 
 # ---------------------------
@@ -126,21 +123,18 @@ def main_app():
                     </div>
                 """, unsafe_allow_html=True)
 
-                # ✅ Upload image to Storage
-                blob = bucket.blob(f"user_uploads/{uploaded_file.name}")
-                uploaded_file.seek(0)
-                blob.upload_from_file(uploaded_file, content_type=uploaded_file.type)
-                image_url = blob.public_url
-
-                # ✅ Save prediction to Firestore
+                # Save prediction to Firestore
                 db.collection("predictions").add({
                     "email": st.session_state["user_email"],
                     "filename": uploaded_file.name,
                     "prediction": label,
-                    "timestamp": datetime.now(),
-                    "image_url": image_url
+                    "timestamp": datetime.now()
                 })
 
+                # Upload image to Storage
+                blob = bucket.blob(f"user_uploads/{uploaded_file.name}")
+                uploaded_file.seek(0)
+                blob.upload_from_file(uploaded_file, content_type=uploaded_file.type)
                 st.success("✅ Image and prediction logged successfully!")
 
 # ---------------------------
@@ -149,7 +143,7 @@ def main_app():
 def logout():
     if st.sidebar.button("Logout"):
         st.session_state.clear()
-        st.rerun()
+        st.experimental_rerun()
 
 # ---------------------------
 # 🧭 Navigation
