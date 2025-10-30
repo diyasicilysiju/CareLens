@@ -24,6 +24,7 @@ firebase = pyrebase.initialize_app({
     "storageBucket": firebase_config["storageBucket"],
     "messagingSenderId": firebase_config["messagingSenderId"],
     "appId": firebase_config["appId"],
+    "databaseURL": firebase_config["databaseURL"],
 })
 
 auth = firebase.auth()
