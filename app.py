@@ -31,10 +31,10 @@ auth = firebase.auth()
 
 # Firebase Admin (for Firestore + Storage)
 cred = credentials.Certificate(firebase_admin_config)
-if not firebase_admin._apps:
-    firebase_admin.initialize_app(cred, {
-        "storageBucket": firebase_admin_config["project_id"] + ".appspot.com"
-    })
+firebase_admin.initialize_app(cred, {
+    "storageBucket": "medical-classifier.firebasestorage.app"
+})
+
 
 bucket = storage.bucket()
 db = firestore.client()
