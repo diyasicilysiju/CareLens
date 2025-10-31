@@ -5,3 +5,4 @@ torchvision
 Pillow
 numpy
 pyrebase4
+boto3
